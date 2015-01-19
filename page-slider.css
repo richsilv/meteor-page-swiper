@@ -1,0 +1,16 @@
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0; }
+
+#page-slider {
+  position: fixed;
+  width: 100%;
+  height: 100%; }
+  #page-slider #ps-conveyor {
+    width: 100%;
+    height: 100%; }
+    #page-slider #ps-conveyor .ps-page {
+      width: 100%;
+      height: 100%;
+      position: absolute; }
