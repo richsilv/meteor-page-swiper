@@ -18,7 +18,96 @@ html, body {
 			width: 100%;
 			height: 100%;
 			position: absolute;
+
+			.ps-subpage {
+				width: 100%;
+				height: 100%;
+				position: absolute;
+			}
 		}
 
 	}
+}
+
+.ps-overlay {
+	z-index: 240;
+	display: flex;
+	position: fixed;
+
+	&.top {
+		top: 0;
+		left: 0;
+		width: 100%;
+		margin-top: 1vw;
+		justify-content: center;
+	}
+	&.bottom {
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		margin-bottom: 1vw;
+		justify-content: center;
+	}
+	&.left {
+		top: 0;
+		left: 0;
+		height: 100%;
+		margin-left: 1vw;
+		align-items: center;
+	}
+	&.right {
+		top: 0;
+		right: 0;
+		height: 100%;
+		margin-right: 1vw;
+		align-items: center;
+	}
+}
+.ps-arrow {
+	$color: rgb(255, 255, 255);
+	$normal-color: transparentize($color, 0.75);
+	$hover-color: transparentize($color, 0.5);
+	$size: 2vw;
+	width: 0; 
+	height: 0;
+	cursor: pointer;
+	transition: border-color 0.5s;
+
+	&.disabled {
+		visibility: hidden;
+	}
+
+	&.right {
+		border-top: $size solid transparent;
+		border-bottom: $size solid transparent;
+		border-left: $size solid $normal-color;
+		&:hover {
+			border-left: $size solid $hover-color;
+		}		
+	}
+	&.left {
+		border-top: $size solid transparent;
+		border-bottom: $size solid transparent; 
+		border-right:$size solid $normal-color;
+		&:hover {
+			border-right:$size solid $hover-color;
+		}	
+	}
+	&.up {
+		border-left: $size solid transparent;
+		border-right: $size solid transparent;
+		border-bottom: $size solid $normal-color;
+		&:hover {
+			border-bottom: $size solid $hover-color;
+		}	
+	}
+	&.down {
+		border-left: $size solid transparent;
+		border-right: $size solid transparent;
+		border-top: $size solid $normal-color;
+		&:hover {
+			border-top: $size solid $hover-color;
+		}	
+	}
+
 }
