@@ -66,7 +66,7 @@ html, body {
 .ps-arrow {
 	$color: rgb(255, 255, 255);
 	$normal-color: transparentize($color, 0.75);
-	$hover-color: transparentize($color, 0.5);
+	$hover-color: transparentize($color, 0.5s);
 	$size: 2vw;
 	width: 0; 
 	height: 0;

@@ -1,6 +1,7 @@
 var TRIGGER = 50,
-	VELOCITY = 15;
-	EASING_TIME = 250;
+	VELOCITY = 15,
+	EASING_TIME = 250,
+	PAGE_BUFFER = 50;
 
 PageSlider = function(el, opts) {
 
@@ -19,6 +20,12 @@ PageSlider = function(el, opts) {
 	this.dragged = {
 		top: 0,
 		left: 0
+	}
+	this.bounds = {
+		top: 0,
+		left: 0,
+		bottom: 0,
+		right: 0
 	}
 	this.pages = [];
 	this.pageInd = opts.pageInd || 0;
@@ -80,10 +87,24 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 	} else {
 		_this.pages[this.pageInd].reposition(immediate, cb);
 	}
-	if (this.loop || this.pageInd < this.pageCount - 1) this.rightArrow.removeClass('disabled')
-	else this.rightArrow.addClass('disabled');
-	if (this.loop || this.pageInd > 0) this.leftArrow.removeClass('disabled')
-	else this.leftArrow.addClass('disabled');
+
+	if (this.loop || this.pageInd < this.pageCount - 1) {
+		this.rightArrow.removeClass('disabled');
+		this.bounds.right = this.left - this.width;
+	}
+	else {
+		this.rightArrow.addClass('disabled');
+		this.bounds.right = this.left - PAGE_BUFFER;
+	}
+
+	if (this.loop || this.pageInd > 0)  {
+		this.leftArrow.removeClass('disabled');
+		this.bounds.left = this.left + this.width;
+	}
+	else { 
+		this.leftArrow.addClass('disabled');
+		this.bounds.left = this.left + PAGE_BUFFER;
+	}
 }
 
 PageSlider.prototype.realign = function(immediate) {
@@ -165,7 +186,8 @@ Page.prototype.reposition = function(immediate, cb) {
 		cb = immediate;
 		immediate = false;
 	}
-	var newTop = -this.ps.height * this.subPageInd;
+	var ps = this.ps,
+		newTop = -ps.height * this.subPageInd;
 
 	if (newTop !== this.top || this.dragged.top !== this.top) {
 		this.top = newTop;
@@ -177,10 +199,22 @@ Page.prototype.reposition = function(immediate, cb) {
 			callback: cb
 		});
 	}
-	if (this.loop || this.subPageInd < this.subPageCount - 1) this.ps.downArrow.removeClass('disabled')
-	else this.ps.downArrow.addClass('disabled');
-	if (this.loop || this.subPageInd > 0) this.ps.upArrow.removeClass('disabled')
-	else this.ps.upArrow.addClass('disabled');
+	if (this.loop || this.subPageInd < this.subPageCount - 1) { 
+		ps.downArrow.removeClass('disabled');
+		ps.bounds.top = this.top - ps.height;
+	}
+	else {
+		ps.downArrow.addClass('disabled');
+		ps.bounds.top = this.top - PAGE_BUFFER;
+	}
+	if (this.loop || this.subPageInd > 0) {
+		ps.upArrow.removeClass('disabled');
+		ps.bounds.bottom = this.top + ps.height;
+	}
+	else { 
+		ps.upArrow.addClass('disabled');
+		ps.bounds.bottom = this.top + PAGE_BUFFER;
+	}
 }
 
 Page.prototype.realign = function(immediate) {
@@ -248,14 +282,14 @@ Template.pageSlider.events({
 				tp.dragging = largerMag(touchable.currentStartDelta);
 			}			
 		} else if (tp.dragging === 'x') {
-			ps.dragged.left = ps.left + touchable.currentStartDelta.x;
+			ps.dragged.left = Math.min(Math.max(ps.left + touchable.currentStartDelta.x, ps.bounds.right), ps.bounds.left);
 			ps.conveyor.snabbt({
 				position: [ps.dragged.left, ps.dragged.top, 0],
 				duration: 50,
 				easing: 'linear'
 			});
 		} else if (tp.dragging === 'y') {
-			page.dragged.top = page.top + touchable.currentStartDelta.y;
+			page.dragged.top = Math.min(Math.max(page.top + touchable.currentStartDelta.y, ps.bounds.top), ps.bounds.bottom);
 			page.container.snabbt({
 				position: [page.dragged.left, page.dragged.top, 0],
 				duration: 50,
@@ -268,7 +302,7 @@ Template.pageSlider.events({
 		var ps = tp.ps,
 			page = tp.ps.pages[tp.ps.pageInd];
 		if (tp.dragging === 'x') {
-			ps.dragged.left = ps.left + touchable.currentStartDelta.x + (touchable.currentDelta.x * VELOCITY);
+			ps.dragged.left = Math.min(Math.max(ps.left + touchable.currentStartDelta.x, ps.bounds.right), ps.bounds.left) + (touchable.currentDelta.x * VELOCITY);
 			tp.ps.conveyor.snabbt({
 				position: [ps.dragged.left, ps.dragged.top, 0],
 				duration: EASING_TIME,
@@ -276,7 +310,7 @@ Template.pageSlider.events({
 			});
 			Meteor.setTimeout(ps.realign.bind(ps, EASING_TIME), EASING_TIME/2.5);
 		} else if (tp.dragging === 'y') {
-			page.dragged.top = page.top + touchable.currentStartDelta.y + (touchable.currentDelta.y * VELOCITY);
+			page.dragged.top = Math.min(Math.max(page.top + touchable.currentStartDelta.y, ps.bounds.top), ps.bounds.bottom) + (touchable.currentDelta.y * VELOCITY);
 			page.container.snabbt({
 				position: [page.dragged.left, page.dragged.top, 0],
 				duration: EASING_TIME,
