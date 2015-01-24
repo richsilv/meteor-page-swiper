@@ -20,15 +20,17 @@ PageSlider = function(el, opts) {
 	this.dragged = {
 		top: 0,
 		left: 0
-	}
+	};
 	this.bounds = {
 		top: 0,
 		left: 0,
 		bottom: 0,
 		right: 0
-	}
+	};
 	this.pages = [];
 	this.pageInd = opts.pageInd || 0;
+	this.layoutTemplate = Template[opts.layoutTemplate];
+	this.opts = opts;
 
 	opts.layout && _.each(opts.layout, function(subPageCount, ind) {
 		var thisPage = new Page({ps: _this, ind: ind, subPageCount: subPageCount});
@@ -53,6 +55,27 @@ PageSlider = function(el, opts) {
 
 	this.reposition(0);
 
+	this.publicObj = function() {
+		return {
+			renderTo: _this.renderTo.bind(_this),
+			transitionTo: _this.transitionTo.bind(_this),
+			forward: _this.forward.bind(_this),
+			back: _this.back.bind(_this),
+			up: _this.up.bind(_this),
+			down: _this.down.bind(_this),
+			go: _this.go.bind(_this),
+			getLocation: _this.getLocation.bind(_this),
+			page: _this.page.bind(_this),
+			getPageInd: _this.getPageInd.bind(_this),
+			subPage: _this.subPage.bind(_this),
+			getSubPageInd: _this.getSubPageInd.bind(_this),
+			setMoveable: _this.setMoveable.bind(_this),
+			current: function() {
+				return _this;
+			}
+		}
+	}
+
 };
 
 PageSlider.prototype.renderTo = function(location, template, data) {
@@ -60,8 +83,8 @@ PageSlider.prototype.renderTo = function(location, template, data) {
 	this.pages[page].renderTo(location[1], template, data);
 }
 
-PageSlider.prototype.transitionTo = function(location, template, data) {
-	patchRendered(template, this.go.bind(this, location));
+PageSlider.prototype.transitionTo = function(location, template, data, waitOn) {
+	patchRendered(template, this.waitThenGo.bind(this, location, waitOn));
 	this.renderTo.apply(this, arguments);
 }
 
@@ -71,7 +94,8 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 		immediate = false;
 	}
 	var newLeft = -this.width * this.pageInd,
-		_this = this;
+		_this = this,
+		page = this.page();
 
 	if (newLeft !== this.left || this.dragged.left !== this.left) {
 		this.left = newLeft;
@@ -88,7 +112,7 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 		_this.pages[this.pageInd].reposition(immediate, cb);
 	}
 
-	if (this.loop || this.pageInd < this.pageCount - 1) {
+	if ((this.loop || this.pageInd < this.pageCount - 1) && page.moveable.right) {
 		this.rightArrow.removeClass('disabled');
 		this.bounds.right = this.left - this.width;
 	}
@@ -97,7 +121,7 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 		this.bounds.right = this.left - PAGE_BUFFER;
 	}
 
-	if (this.loop || this.pageInd > 0)  {
+	if ((this.loop || this.pageInd > 0) && page.moveable.left)  {
 		this.leftArrow.removeClass('disabled');
 		this.bounds.left = this.left + this.width;
 	}
@@ -131,11 +155,11 @@ PageSlider.prototype.back = function(loop) {
 }
 
 PageSlider.prototype.down = function(loop) {
-	this.pages[this.pageInd] && this.pages[this.pageInd].down && this.pages[this.pageInd].down(loop);
+	this.page() && this.page().down(loop);
 }
 
 PageSlider.prototype.up = function(loop) {
-	this.pages[this.pageInd] && this.pages[this.pageInd].up && this.pages[this.pageInd].up(loop);
+	this.page() && this.page().up(loop);
 }
 
 PageSlider.prototype.go = function(location, immediate) {
@@ -148,6 +172,70 @@ PageSlider.prototype.go = function(location, immediate) {
 	if (newSubPage) newPage.subPageInd = subPageInd;
 
 	this.reposition(immediate);
+}
+
+PageSlider.prototype.waitThenGo = function(location, waitOn) {
+	var _this = this;
+	if (!waitOn) {
+		this.go.call(this, location);
+		return location;
+	}
+	else if (!(waitOn instanceof Array)) waitOn = [waitOn];
+
+	Tracker.autorun(function(c) {
+		ready = _.reduce(waitOn, function(readySoFar, thisWait) {
+			return readySoFar && thisWait.ready && thisWait.ready();
+		}, true);
+		if (ready) {
+			c.stop();
+			_this.go.call(_this, location);
+		}
+	});
+}
+
+PageSlider.prototype.getLocation = function(modifier) {
+	var pageInd = this.pageInd,
+		subPageInd;
+
+	if (modifier === 'page') return pageInd;
+
+	subPageInd = this.pages[pageInd].subPageInd;
+
+	if (modifier === 'subPage') return subPageInd;
+	else return [pageInd, subPageInd];
+}
+
+PageSlider.prototype.page = function() {
+	return this.pages[this.pageInd];
+}
+
+PageSlider.prototype.getPageInd = function() {
+	return this.pageInd;
+}
+
+PageSlider.prototype.subPage = function() {
+	return this.page().subPage();
+}
+
+PageSlider.prototype.getSubPageInd = function() {
+	return this.page().subPageInd;
+}
+
+PageSlider.prototype.setMoveable = function(dir, bool) {
+	if (typeof dir === 'boolean') {
+		this.page().setMoveable(bool);
+		this.subPage().setMoveable(bool);
+	} else if (dir === 'left' || dir === 'right') {
+		this.page().setMoveable(dir, bool);
+	} else if (dir === 'up' || dir === 'down') {
+		this.subPage().setMoveable(dir, bool);;
+	}
+}
+
+PageSlider.prototype.resize = function() {
+	this.width = $(window).width();
+	this.height = $(window).height();
+	this.reposition();
 }
 
 Page = function(opts) {
@@ -165,8 +253,12 @@ Page = function(opts) {
 	this.dragged = {
 		top: 0,
 		left: 0
-	}
-	this.container.css('left', this.ps.width * this.ind);
+	};
+	this.moveable = {
+		left: true,
+		right: true
+	};
+	this.position();
 
 	for (var i = 0; i < opts.subPageCount; i++) {
 		var thisSubPage = new SubPage({ps: _this.ps, page: _this, subInd: i});
@@ -175,6 +267,10 @@ Page = function(opts) {
 	}
 
 };
+
+Page.prototype.position = function() {
+	this.container.css('left', 100 * this.ind + '%');	
+}
 
 Page.prototype.renderTo = function(location, template, data) {
 	var subPage = location || 0;
@@ -187,7 +283,8 @@ Page.prototype.reposition = function(immediate, cb) {
 		immediate = false;
 	}
 	var ps = this.ps,
-		newTop = -ps.height * this.subPageInd;
+		newTop = -ps.height * this.subPageInd,
+		subPage = this.subPage();
 
 	if (newTop !== this.top || this.dragged.top !== this.top) {
 		this.top = newTop;
@@ -199,7 +296,7 @@ Page.prototype.reposition = function(immediate, cb) {
 			callback: cb
 		});
 	}
-	if (this.loop || this.subPageInd < this.subPageCount - 1) { 
+	if ((this.loop || this.subPageInd < this.subPageCount - 1) && subPage.moveable.down) { 
 		ps.downArrow.removeClass('disabled');
 		ps.bounds.top = this.top - ps.height;
 	}
@@ -207,7 +304,7 @@ Page.prototype.reposition = function(immediate, cb) {
 		ps.downArrow.addClass('disabled');
 		ps.bounds.top = this.top - PAGE_BUFFER;
 	}
-	if (this.loop || this.subPageInd > 0) {
+	if ((this.loop || this.subPageInd > 0) && subPage.moveable.up) {
 		ps.upArrow.removeClass('disabled');
 		ps.bounds.bottom = this.top + ps.height;
 	}
@@ -245,30 +342,79 @@ Page.prototype.setTo = function(subPage) {
 	this.reposition();
 }
 
+Page.prototype.subPage = function() {
+	return this.subPages[this.subPageInd];
+}
+
+Page.prototype.getSubPageInd = function() {
+	return this.subPageInd;
+}
+
+Page.prototype.setMoveable = function(dir, bool) {
+	if (typeof dir === 'boolean') {
+		this.moveable = {
+			left: bool,
+			right: bool
+		};
+	} else if (dir === 'right' || dir === 'left') {
+		this.moveable[dir] = bool;
+	}
+	this.ps.reposition(0);
+}
+
 SubPage = function(opts) {
 
 	this.ps = opts.ps;
 	this.page = opts.page;
 	this.ind = this.page.ind;
 	this.subInd = opts.subInd;
+	this.moveable = {
+		up: true,
+		down: true
+	};
 	this.container = $('<div class="ps-subpage"></div>');
-	this.container.css('top', this.ps.height * this.subInd);
-
+	this.position();
 };
+
+SubPage.prototype.position = function() {
+	this.container.css('top', 100 * this.subInd + '%');
+}
 
 SubPage.prototype.render = function(template, data) {
 	if (this.view) Blaze.remove(this.view);
 	this.container.empty();
+
 	var thisTemplate = (typeof template === 'string') ? Template[template] : template;
 	if (!(thisTemplate instanceof Blaze.Template)) {
 		console.error('Cannot render a non-template: ' + (template ? template.toString() : template));
 		console.trace();
 		return false;
 	}
-	if (data)
+
+	if (this.ps.layoutTemplate) {
+		data = {
+			data: data,
+			template: template
+		};
+		thisTemplate = this.ps.layoutTemplate
+	}
+
+	if (data && !_.isEmpty(data))
 		Blaze.renderWithData(thisTemplate, data, this.container[0]);
 	else
 		Blaze.render(thisTemplate, this.container[0]);		
+}
+
+SubPage.prototype.setMoveable = function(dir, bool) {
+	if (typeof dir === 'boolean') {
+		this.moveable = {
+			up: bool,
+			down: bool
+		};
+	} else if (dir === 'up' || dir === 'down') {
+		this.moveable[dir] = bool;
+	}
+	this.page.reposition(0);
 }
 
 // **********************************
@@ -282,14 +428,14 @@ Template.pageSlider.events({
 				tp.dragging = largerMag(touchable.currentStartDelta);
 			}			
 		} else if (tp.dragging === 'x') {
-			ps.dragged.left = Math.min(Math.max(ps.left + touchable.currentStartDelta.x, ps.bounds.right), ps.bounds.left);
+			ps.dragged.left = bound(ps.left + touchable.currentStartDelta.x, ps.bounds.left, ps.bounds.right);
 			ps.conveyor.snabbt({
 				position: [ps.dragged.left, ps.dragged.top, 0],
 				duration: 50,
 				easing: 'linear'
 			});
 		} else if (tp.dragging === 'y') {
-			page.dragged.top = Math.min(Math.max(page.top + touchable.currentStartDelta.y, ps.bounds.top), ps.bounds.bottom);
+			page.dragged.top = bound(page.top + touchable.currentStartDelta.y, ps.bounds.bottom, ps.bounds.top);
 			page.container.snabbt({
 				position: [page.dragged.left, page.dragged.top, 0],
 				duration: 50,
@@ -302,7 +448,7 @@ Template.pageSlider.events({
 		var ps = tp.ps,
 			page = tp.ps.pages[tp.ps.pageInd];
 		if (tp.dragging === 'x') {
-			ps.dragged.left = Math.min(Math.max(ps.left + touchable.currentStartDelta.x, ps.bounds.right), ps.bounds.left) + (touchable.currentDelta.x * VELOCITY);
+			ps.dragged.left = bound(ps.left + touchable.currentStartDelta.x, ps.bounds.left, ps.bounds.right) + bound(touchable.currentDelta.x * VELOCITY, PAGE_BUFFER, -PAGE_BUFFER);
 			tp.ps.conveyor.snabbt({
 				position: [ps.dragged.left, ps.dragged.top, 0],
 				duration: EASING_TIME,
@@ -310,7 +456,7 @@ Template.pageSlider.events({
 			});
 			Meteor.setTimeout(ps.realign.bind(ps, EASING_TIME), EASING_TIME/2.5);
 		} else if (tp.dragging === 'y') {
-			page.dragged.top = Math.min(Math.max(page.top + touchable.currentStartDelta.y, ps.bounds.top), ps.bounds.bottom) + (touchable.currentDelta.y * VELOCITY);
+			page.dragged.top = bound(page.top + touchable.currentStartDelta.y, ps.bounds.bottom, ps.bounds.top) + bound(touchable.currentDelta.y * VELOCITY, PAGE_BUFFER, -PAGE_BUFFER);
 			page.container.snabbt({
 				position: [page.dragged.left, page.dragged.top, 0],
 				duration: EASING_TIME,
@@ -344,8 +490,10 @@ Template.pageSlider.rendered = function() {
 		$el = this.$('#page-slider');
 
 	this.ps = new PageSlider($el, opts);
-	PageSlider.active = this.ps;
+	Meteor.PageSlider = this.ps.publicObj();
 	$el.Touchable();
+
+	$(window).on('resize', this.ps.resize.bind(this.ps));
 
 }
 
@@ -371,4 +519,8 @@ function distance(vector) {
 
 function largerMag(vector) {
 	return Math.abs(vector.x) > Math.abs(vector.y) ? 'x' : 'y';
+}
+
+function bound(value, max, min) {
+	return Math.max(Math.min(value, max), min);
 }
