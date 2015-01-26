@@ -72,6 +72,14 @@ PageSlider = function(el, opts) {
 			setMoveable: _this.setMoveable.bind(_this),
 			current: function() {
 				return _this;
+			},
+			getPage: function(page) {
+				return _this.pages[page];
+			},
+			getSubPage: function(location, extraArg) {
+				if (extraArg) location = [location, extraArg];
+				var page = _this.pages[location[0]];
+				return page && page.subPages[location[1]];
 			}
 		}
 	}
@@ -95,7 +103,10 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 	}
 	var newLeft = -this.width * this.pageInd,
 		_this = this,
-		page = this.page();
+		page = this.page(),
+		moved = false;
+
+	if (newLeft !== this.left) moved = true;
 
 	if (newLeft !== this.left || this.dragged.left !== this.left) {
 		this.left = newLeft;
@@ -105,11 +116,11 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 			duration: immediate ? immediate : 1000,
 			easing: 'ease',
 			callback: function() {
-				_this.pages[_this.pageInd].reposition(immediate, cb);
+				_this.pages[_this.pageInd].reposition(immediate, cb, moved);
 			}
 		});
 	} else {
-		_this.pages[this.pageInd].reposition(immediate, cb);
+		_this.pages[this.pageInd].reposition(immediate, cb, moved);
 	}
 
 	if ((this.loop || this.pageInd < this.pageCount - 1) && page.moveable.right) {
@@ -174,6 +185,21 @@ PageSlider.prototype.go = function(location, immediate) {
 	this.reposition(immediate);
 }
 
+PageSlider.prototype.nudge = function(location) {
+	if (location[0] > this.pageInd) this.dragged.left = this.left - PAGE_BUFFER;
+	else if (location[0] < this.pageInd) this.dragged.left = this.left + PAGE_BUFFER;
+	else {
+		this.page().nudge(location);
+		return null;
+	}
+
+	this.conveyor.snabbt({
+		position: [this.dragged.left, this.dragged.top, 0],
+		duration: EASING_TIME,
+		easing: 'easeOut'
+	});
+}
+
 PageSlider.prototype.waitThenGo = function(location, waitOn) {
 	var _this = this;
 	if (!waitOn) {
@@ -182,6 +208,7 @@ PageSlider.prototype.waitThenGo = function(location, waitOn) {
 	}
 	else if (!(waitOn instanceof Array)) waitOn = [waitOn];
 
+	this.nudge(location);
 	Tracker.autorun(function(c) {
 		ready = _.reduce(waitOn, function(readySoFar, thisWait) {
 			return readySoFar && thisWait.ready && thisWait.ready();
@@ -277,14 +304,21 @@ Page.prototype.renderTo = function(location, template, data) {
 	this.subPages[subPage].render(template, data);
 }
 
-Page.prototype.reposition = function(immediate, cb) {
+Page.prototype.reposition = function(immediate, cb, moved) {
 	if (typeof immediate === 'function') {
 		cb = immediate;
 		immediate = false;
 	}
-	var ps = this.ps,
+	var _this = this,
+		ps = this.ps,
 		newTop = -ps.height * this.subPageInd,
-		subPage = this.subPage();
+		subPage = this.subPage(),
+		wrappedCb = function() {
+			moved && _this.subPage().onTransitioned && _this.subPage().onTransitioned();
+			cb && cb();
+		};
+
+	if (newTop !== this.top) moved = true;
 
 	if (newTop !== this.top || this.dragged.top !== this.top) {
 		this.top = newTop;
@@ -293,8 +327,10 @@ Page.prototype.reposition = function(immediate, cb) {
 			position: [this.left, this.top, 0],
 			duration: immediate ? immediate : 1000,
 			easing: 'ease',
-			callback: cb
+			callback: wrappedCb
 		});
+	} else {
+		wrappedCb();
 	}
 	if ((this.loop || this.subPageInd < this.subPageCount - 1) && subPage.moveable.down) { 
 		ps.downArrow.removeClass('disabled');
@@ -335,6 +371,18 @@ Page.prototype.up = function(loop) {
 		else this.subPageInd = 0;
 	}
 	this.reposition();
+}
+
+Page.prototype.nudge = function(location) {
+	if (location[1] > this.subPageInd) this.dragged.top = this.top + PAGE_BUFFER;
+	else if (location[1] < this.subPageInd) this.dragged.top = this.top - PAGE_BUFFER;
+	else return null;
+
+	this.container.snabbt({
+		position: [this.dragged.left, this.dragged.top, 0],
+		duration: EASING_TIME,
+		easing: 'easeOut'
+	});
 }
 
 Page.prototype.setTo = function(subPage) {
@@ -467,10 +515,10 @@ Template.pageSlider.events({
 		tp.dragging = false;
 	},
 	'click .down.ps-arrow': function(evt, tp) {
-		tp.ps.pages[tp.ps.pageInd].down();
+		tp.ps.page().down();
 	},
 	'click .up.ps-arrow': function(evt, tp) {
-		tp.ps.pages[tp.ps.pageInd].up();
+		tp.ps.page().up();
 	},
 	'click .left.ps-arrow': function(evt, tp) {
 		tp.ps.back();
