@@ -4,7 +4,7 @@ html, body {
 	margin: 0;
 }
 
-#page-slider {
+#page-swiper {
 	position: fixed;
 	width: 100%;
 	height: 100%;
@@ -64,14 +64,13 @@ html, body {
 	}
 }
 .ps-arrow {
-	$color: rgb(255, 255, 255);
-	$normal-color: transparentize($color, 0.75);
-	$hover-color: transparentize($color, 0.5s);
+	$normal-color: rgb(255, 255, 255);
+	opacity: 0.4;
 	$size: 2vw;
 	width: 0; 
 	height: 0;
 	cursor: pointer;
-	transition: border-color 0.5s;
+	transition: opacity 0.5s, border-color 0.5s;
 
 	&.disabled {
 		visibility: hidden;
@@ -80,34 +79,25 @@ html, body {
 	&.right {
 		border-top: $size solid transparent;
 		border-bottom: $size solid transparent;
-		border-left: $size solid $normal-color;
-		&:hover {
-			border-left: $size solid $hover-color;
-		}		
+		border-left: $size solid $normal-color;		
 	}
 	&.left {
 		border-top: $size solid transparent;
 		border-bottom: $size solid transparent; 
 		border-right:$size solid $normal-color;
-		&:hover {
-			border-right:$size solid $hover-color;
-		}	
 	}
 	&.up {
 		border-left: $size solid transparent;
 		border-right: $size solid transparent;
 		border-bottom: $size solid $normal-color;
-		&:hover {
-			border-bottom: $size solid $hover-color;
-		}	
 	}
 	&.down {
 		border-left: $size solid transparent;
 		border-right: $size solid transparent;
-		border-top: $size solid $normal-color;
-		&:hover {
-			border-top: $size solid $hover-color;
-		}	
+		border-top: $size solid $normal-color;	
+	}
+	&:hover {
+		opacity: 0.6;
 	}
 
 }

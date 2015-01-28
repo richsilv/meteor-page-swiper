@@ -3,7 +3,7 @@ var TRIGGER = 50,
 	EASING_TIME = 250,
 	PAGE_BUFFER = 50;
 
-PageSlider = function(el, opts) {
+PageSwiper = function(el, opts) {
 
 	var _this = this;
 		
@@ -31,6 +31,10 @@ PageSlider = function(el, opts) {
 	this.pageInd = opts.pageInd || 0;
 	this.layoutTemplate = Template[opts.layoutTemplate];
 	this.opts = opts;
+	this.locationDep = new Tracker.Dependency();
+
+	if (opts.configuration)
+		_.extend(opts, buildTemplate(opts.configuration));
 
 	opts.layout && _.each(opts.layout, function(subPageCount, ind) {
 		var thisPage = new Page({ps: _this, ind: ind, subPageCount: subPageCount});
@@ -54,15 +58,16 @@ PageSlider = function(el, opts) {
 	this.pageCount = opts.layout && opts.layout.length;
 
 	this.reposition(0);
+	this.prevLocation = this.getLocation();
 
 	this.publicObj = function() {
 		return {
 			renderTo: _this.renderTo.bind(_this),
 			transitionTo: _this.transitionTo.bind(_this),
-			forward: _this.forward.bind(_this),
-			back: _this.back.bind(_this),
-			up: _this.up.bind(_this),
-			down: _this.down.bind(_this),
+			moveRight: _this.moveRight.bind(_this),
+			moveLeft: _this.moveLeft.bind(_this),
+			moveUp: _this.moveUp.bind(_this),
+			moveDown: _this.moveDown.bind(_this),
 			go: _this.go.bind(_this),
 			getLocation: _this.getLocation.bind(_this),
 			page: _this.page.bind(_this),
@@ -70,6 +75,7 @@ PageSlider = function(el, opts) {
 			subPage: _this.subPage.bind(_this),
 			getSubPageInd: _this.getSubPageInd.bind(_this),
 			setMoveable: _this.setMoveable.bind(_this),
+			getLocation: _this.getLocation.bind(_this),
 			current: function() {
 				return _this;
 			},
@@ -80,23 +86,32 @@ PageSlider = function(el, opts) {
 				if (extraArg) location = [location, extraArg];
 				var page = _this.pages[location[0]];
 				return page && page.subPages[location[1]];
+			},
+			pageRight: function() {
+				var loc = _this.getLocation();
+				if (loc[0] < _this.pageCount - 1) 
+					return [loc[0] + 1, _this.pages[loc[0] + 1].getSubPageInd()];
+			},
+			pageLeft: function() {
+				var loc = _this.getLocation();
+				if (loc[0] > 0) 
+					return [loc[0] - 1, _this.pages[loc[0] - 1].getSubPageInd()];
 			}
 		}
 	}
-
 };
 
-PageSlider.prototype.renderTo = function(location, template, data) {
+PageSwiper.prototype.renderTo = function(location, template, data) {
 	var page = (location instanceof Array) ? location[0] : location;
 	this.pages[page].renderTo(location[1], template, data);
 }
 
-PageSlider.prototype.transitionTo = function(location, template, data, waitOn) {
+PageSwiper.prototype.transitionTo = function(location, template, data, waitOn) {
 	patchRendered(template, this.waitThenGo.bind(this, location, waitOn));
 	this.renderTo.apply(this, arguments);
 }
 
-PageSlider.prototype.reposition = function(immediate, cb) {
+PageSwiper.prototype.reposition = function(immediate, cb) {
 	if (typeof immediate === 'function') {
 		cb = immediate;
 		immediate = false;
@@ -104,7 +119,9 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 	var newLeft = -this.width * this.pageInd,
 		_this = this,
 		page = this.page(),
-		moved = false;
+		subPage = this.subPage(),
+		moved = false,
+		arrowCol = subPage.arrowCol || page.arrowCol || this.arrowCol || 'white';
 
 	if (newLeft !== this.left) moved = true;
 
@@ -123,7 +140,7 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 		_this.pages[this.pageInd].reposition(immediate, cb, moved);
 	}
 
-	if ((this.loop || this.pageInd < this.pageCount - 1) && page.moveable.right) {
+	if ((this.loop || this.pageInd < this.pageCount - 1) && subPage.moveable.right) {
 		this.rightArrow.removeClass('disabled');
 		this.bounds.right = this.left - this.width;
 	}
@@ -132,7 +149,7 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 		this.bounds.right = this.left - PAGE_BUFFER;
 	}
 
-	if ((this.loop || this.pageInd > 0) && page.moveable.left)  {
+	if ((this.loop || this.pageInd > 0) && subPage.moveable.left)  {
 		this.leftArrow.removeClass('disabled');
 		this.bounds.left = this.left + this.width;
 	}
@@ -142,12 +159,14 @@ PageSlider.prototype.reposition = function(immediate, cb) {
 	}
 }
 
-PageSlider.prototype.realign = function(immediate) {
+PageSwiper.prototype.realign = function(immediate) {
 	this.pageInd = Math.min(Math.max(-Math.round(this.dragged.left / this.width), 0), this.pageCount - 1);
 	this.reposition(immediate);
 }
 
-PageSlider.prototype.forward = function(loop) {
+PageSwiper.prototype.moveRight = function(loop) {
+	var subPage = this.subPage();
+	if (!subPage.moveable.right) return null;
 	this.pageInd++;
 	if (this.pageInd >= this.pageCount) {
 		if (loop) this.pageInd = 0;
@@ -156,7 +175,9 @@ PageSlider.prototype.forward = function(loop) {
 	this.reposition();
 }
 
-PageSlider.prototype.back = function(loop) {
+PageSwiper.prototype.moveLeft = function(loop) {
+	var subPage = this.subPage();
+	if (!subPage.moveable.left) return null;
 	this.pageInd--;
 	if (this.pageInd < 0) {
 		if (loop) this.pageInd = this.pageCount - 1;
@@ -165,15 +186,15 @@ PageSlider.prototype.back = function(loop) {
 	this.reposition();
 }
 
-PageSlider.prototype.down = function(loop) {
-	this.page() && this.page().down(loop);
+PageSwiper.prototype.moveDown = function(loop) {
+	this.page() && this.page().moveDown(loop);
 }
 
-PageSlider.prototype.up = function(loop) {
-	this.page() && this.page().up(loop);
+PageSwiper.prototype.moveUp = function(loop) {
+	this.page() && this.page().moveUp(loop);
 }
 
-PageSlider.prototype.go = function(location, immediate) {
+PageSwiper.prototype.go = function(location, immediate) {
 	var pageInd = location[0],
 		subPageInd = location[1],
 		newPage = this.pages[pageInd];
@@ -185,7 +206,7 @@ PageSlider.prototype.go = function(location, immediate) {
 	this.reposition(immediate);
 }
 
-PageSlider.prototype.nudge = function(location) {
+PageSwiper.prototype.nudge = function(location) {
 	if (location[0] > this.pageInd) this.dragged.left = this.left - PAGE_BUFFER;
 	else if (location[0] < this.pageInd) this.dragged.left = this.left + PAGE_BUFFER;
 	else {
@@ -200,7 +221,7 @@ PageSlider.prototype.nudge = function(location) {
 	});
 }
 
-PageSlider.prototype.waitThenGo = function(location, waitOn) {
+PageSwiper.prototype.waitThenGo = function(location, waitOn) {
 	var _this = this;
 	if (!waitOn) {
 		this.go.call(this, location);
@@ -220,35 +241,35 @@ PageSlider.prototype.waitThenGo = function(location, waitOn) {
 	});
 }
 
-PageSlider.prototype.getLocation = function(modifier) {
-	var pageInd = this.pageInd,
-		subPageInd;
+PageSwiper.prototype.getLocation = function(modifier) {
+	var page = this.page(),
+		subPage = this.subPage();
 
-	if (modifier === 'page') return pageInd;
+	this.locationDep.depend();
 
-	subPageInd = this.pages[pageInd].subPageInd;
+	if (modifier === 'page') return this.pageInd;
 
-	if (modifier === 'subPage') return subPageInd;
-	else return [pageInd, subPageInd];
+	if (modifier === 'subPage') return page.subPageInd;
+	else return [this.pageInd, page.subPageInd];
 }
 
-PageSlider.prototype.page = function() {
+PageSwiper.prototype.page = function() {
 	return this.pages[this.pageInd];
 }
 
-PageSlider.prototype.getPageInd = function() {
+PageSwiper.prototype.getPageInd = function() {
 	return this.pageInd;
 }
 
-PageSlider.prototype.subPage = function() {
+PageSwiper.prototype.subPage = function() {
 	return this.page().subPage();
 }
 
-PageSlider.prototype.getSubPageInd = function() {
+PageSwiper.prototype.getSubPageInd = function() {
 	return this.page().subPageInd;
 }
 
-PageSlider.prototype.setMoveable = function(dir, bool) {
+PageSwiper.prototype.setMoveable = function(dir, bool) {
 	if (typeof dir === 'boolean') {
 		this.page().setMoveable(bool);
 		this.subPage().setMoveable(bool);
@@ -259,7 +280,7 @@ PageSlider.prototype.setMoveable = function(dir, bool) {
 	}
 }
 
-PageSlider.prototype.resize = function() {
+PageSwiper.prototype.resize = function() {
 	this.width = $(window).width();
 	this.height = $(window).height();
 	this.reposition();
@@ -313,8 +334,15 @@ Page.prototype.reposition = function(immediate, cb, moved) {
 		ps = this.ps,
 		newTop = -ps.height * this.subPageInd,
 		subPage = this.subPage(),
+		arrowCol = subPage.arrowCol || this.arrowCol || this.ps.arrowCol || 'white';
 		wrappedCb = function() {
-			moved && _this.subPage().onTransitioned && _this.subPage().onTransitioned();
+			if (moved) {
+				_this.subPage().onTransitioned && _this.subPage().onTransitioned(_this.ps.prevLocation, _this.ps.getLocation());
+				_this.onTransitioned && _this.onTransitioned(_this.ps.prevLocation, _this.ps.getLocation());
+				_this.ps.onTransitioned && _this.ps.onTransitioned(_this.ps.prevLocation, _this.ps.getLocation());
+				_this.ps.prevLocation = _this.ps.getLocation();
+				_this.ps.locationDep.changed();
+			} 
 			cb && cb();
 		};
 
@@ -348,29 +376,39 @@ Page.prototype.reposition = function(immediate, cb, moved) {
 		ps.upArrow.addClass('disabled');
 		ps.bounds.bottom = this.top + PAGE_BUFFER;
 	}
+	if (arrowCol) {
+		$('.ps-arrow.up').css('border-bottom-color', arrowCol);
+		$('.ps-arrow.down').css('border-top-color', arrowCol);
+		$('.ps-arrow.left').css('border-right-color', arrowCol);
+		$('.ps-arrow.right').css('border-left-color', arrowCol);
+	}
 }
 
 Page.prototype.realign = function(immediate) {
 	this.subPageInd = Math.min(Math.max(-Math.round(this.dragged.top / this.ps.height), 0), this.subPageCount - 1);
-	this.reposition(immediate);
+	this.ps.reposition(immediate);
 }
 
-Page.prototype.down = function(loop) {
+Page.prototype.moveDown = function(loop) {
+	var subPage = this.subPage();
+	if (!subPage.moveable.down) return null;
 	this.subPageInd++;
 	if (this.subPageInd >= this.subPageCount) {
 		if (loop) this.subPageInd = 0;
 		else this.subPageInd = this.subPageCount - 1;
 	}
-	this.reposition();
+	this.ps.reposition();
 }
 
-Page.prototype.up = function(loop) {
+Page.prototype.moveUp = function(loop) {
+	var subPage = this.subPage();
+	if (!subPage.moveable.up) return null;
 	this.subPageInd--;
 	if (this.subPageInd < 0) {
 		if (loop) this.subPageInd = this.subPageCount - 1;
 		else this.subPageInd = 0;
 	}
-	this.reposition();
+	this.ps.reposition();
 }
 
 Page.prototype.nudge = function(location) {
@@ -416,12 +454,26 @@ SubPage = function(opts) {
 	this.page = opts.page;
 	this.ind = this.page.ind;
 	this.subInd = opts.subInd;
-	this.moveable = {
+	if (this.ps.opts.moveableArray &&
+		this.ps.opts.moveableArray[this.ind] &&
+		this.ps.opts.moveableArray[this.ind][this.subInd])
+		this.moveable = this.ps.opts.moveableArray[this.ind][this.subInd];
+	else this.moveable = {
 		up: true,
-		down: true
+		down: true,
+		left: true,
+		right: true
 	};
 	this.container = $('<div class="ps-subpage"></div>');
 	this.position();
+	if (this.ps.opts.layoutClasses && this.ps.opts.layoutClasses[this.ind])
+		this.layoutClass = this.ps.opts.layoutClasses[this.ind][this.subInd];
+	if (this.ps.opts.onTransitionedArray && this.ps.opts.onTransitionedArray[this.ind])
+		this.onTransitioned = this.ps.opts.onTransitionedArray[this.ind][this.subInd];
+	if (this.ps.opts.dataArray && this.ps.opts.dataArray[this.ind])
+		this.data = this.ps.opts.dataArray[this.ind][this.subInd];
+	if (this.ps.opts.arrowColArray && this.ps.opts.arrowColArray[this.ind])
+		this.arrowCol = this.ps.opts.arrowColArray[this.ind][this.subInd];	
 };
 
 SubPage.prototype.position = function() {
@@ -433,42 +485,61 @@ SubPage.prototype.render = function(template, data) {
 	this.container.empty();
 
 	var thisTemplate = (typeof template === 'string') ? Template[template] : template;
-	if (!(thisTemplate instanceof Blaze.Template)) {
-		console.error('Cannot render a non-template: ' + (template ? template.toString() : template));
-		console.trace();
-		return false;
-	}
+	
+	templateData = _.extend({}, this.data, data, {subPage: this});
 
 	if (this.ps.layoutTemplate) {
-		data = {
-			data: data,
-			template: template
-		};
-		thisTemplate = this.ps.layoutTemplate
+		this.view = Blaze.renderWithData(this.ps.layoutTemplate, {
+			pageSwiper: this.ps,
+			template: template,
+			data: templateData			
+		}, this.container[0]);
+	} else if (thisTemplate) {
+		this.view = Blaze.renderWithData(thisTemplate, templateData, this.container[0]);
 	}
 
-	if (data && !_.isEmpty(data))
-		Blaze.renderWithData(thisTemplate, data, this.container[0]);
-	else
-		Blaze.render(thisTemplate, this.container[0]);		
+	if (this.ps.layoutTemplate && this.layoutClass) {
+		this.container.find('[data-ps="layout"]').addClass(this.layoutClass);
+	}
 }
 
 SubPage.prototype.setMoveable = function(dir, bool) {
 	if (typeof dir === 'boolean') {
 		this.moveable = {
 			up: bool,
-			down: bool
+			down: bool,
+			left: bool,
+			right: bool
 		};
-	} else if (dir === 'up' || dir === 'down') {
+	} else if (dir === 'up' || dir === 'down' || dir === 'left' || dir === 'right') {
 		this.moveable[dir] = bool;
 	}
-	this.page.reposition(0);
+	this.ps.reposition(0);
 }
 
 // **********************************
 
-Template.pageSlider.events({
-	'touchablemove #page-slider': function (evt, tp, touchable) {
+var transitionMap = {
+	37: {
+			func: 'moveLeft',
+			moveable: 'left'
+		},
+	38: {
+			func: 'moveUp',
+			moveable: 'up'
+		},
+	39: {
+			func: 'moveRight',
+			moveable: 'right'
+		},
+	40: {
+			func: 'moveDown',
+			moveable: 'down'
+		}
+};
+
+Template.pageSwiper.events({
+	'touchablemove #page-swiper': function (evt, tp, touchable) {
 		var ps = tp.ps,
 			page = tp.ps.pages[tp.ps.pageInd];
 		if (!tp.dragging) {
@@ -491,7 +562,7 @@ Template.pageSlider.events({
 			});
 		}
 	},
-	'touchableend #page-slider': function (evt, tp, touchable) {
+	'touchableend #page-swiper': function (evt, tp, touchable) {
 		if (!tp.dragging) return;
 		var ps = tp.ps,
 			page = tp.ps.pages[tp.ps.pageInd];
@@ -514,34 +585,32 @@ Template.pageSlider.events({
 		}
 		tp.dragging = false;
 	},
-	'click .down.ps-arrow': function(evt, tp) {
-		tp.ps.page().down();
-	},
-	'click .up.ps-arrow': function(evt, tp) {
-		tp.ps.page().up();
-	},
-	'click .left.ps-arrow': function(evt, tp) {
-		tp.ps.back();
-	},
-	'click .right.ps-arrow': function(evt, tp) {
-		tp.ps.forward();
+	'click [data-ps-arrow]': function(evt, tp) {
+		var moveFunc = $(evt.currentTarget).data('ps-arrow');
+		tp.ps[moveFunc] && tp.ps[moveFunc].apply(tp.ps);
 	}
 });
 
-Template.pageSlider.created = function() {
+Template.pageSwiper.created = function() {
 	this.dragging = false;
 }
 
-Template.pageSlider.rendered = function() {
+Template.pageSwiper.rendered = function() {
 
 	var opts = (this.data && this.data.options) || {},
-		$el = this.$('#page-slider');
+		$el = this.$('#page-swiper'),
+		_this = this;
 
-	this.ps = new PageSlider($el, opts);
-	Meteor.PageSlider = this.ps.publicObj();
+	this.ps = new PageSwiper($el, opts);
+	Meteor.PageSwiper = this.ps.publicObj();
 	$el.Touchable();
 
 	$(window).on('resize', this.ps.resize.bind(this.ps));
+	$(document).keyup(function(event) {
+		var transitionDetails = transitionMap[event.keyCode],
+			transitionFunc = transitionDetails && _this.ps[transitionDetails.func];
+		transitionFunc && transitionFunc.apply(_this.ps);	
+	});
 
 }
 
@@ -571,4 +640,59 @@ function largerMag(vector) {
 
 function bound(value, max, min) {
 	return Math.max(Math.min(value, max), min);
+}
+
+function buildTemplate(subPages) {
+	var arrays = {
+			'layoutClass': [],
+			'onTransitioned': [],
+			'seedTemplate': [],
+			'moveable': [],
+			'data': [],
+			'arrowCol': []
+		},
+		returnedNames = {
+			'layoutClass': 'layoutClasses',
+			'onTransitioned': 'onTransitionedArray',
+			'seedTemplate': 'seedTemplates',
+			'moveable': 'moveableArray',
+			'data': 'dataArray',
+			'arrowCol': 'arrowColArray'
+		},
+		ret = {};
+
+	var layout = [],
+		i;
+	_.each(subPages, function(subPage) {
+		if (!subPage.location) return null;
+		var pageInd = subPage.location[0],
+			subPageInd = subPage.location[1];
+
+		if (!layout[pageInd]) {
+			layout[pageInd] = subPageInd + 1;
+			for (i = 0; i < pageInd; i += 1)
+				if (!layout[i]) {
+					layout[i] = 1;
+					_.each(arrays, function(val, key) {val[i] = [null]});
+				}
+			_.each(arrays, function(val, key) {
+				val[pageInd] = [];
+				val[pageInd][subPageInd] = subPage[key];
+				val[pageInd] = Array.apply(null, val[pageInd]);
+			});	
+		}
+		else if (layout[pageInd] < subPageInd + 1) {
+			layout[pageInd] = subPageInd + 1;
+			_.each(arrays, function(val, key) {
+				val[pageInd][subPageInd] = subPage[key];
+				val[pageInd] = Array.apply(null, val[pageInd]);		
+			});
+		}
+	});
+
+	_.each(returnedNames, function(val, key) {
+		ret[val] = arrays[key];
+	});
+	ret.layout = layout;
+	return ret;
 }

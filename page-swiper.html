@@ -1,0 +1,15 @@
+<template name="pageSwiper">
+	<div id="page-swiper">
+		<div class="ps-overlay right"><div class="ps-arrow right" data-ps-arrow="moveRight"></div></div>
+		<div class="ps-overlay left"><div class="ps-arrow left" data-ps-arrow="moveLeft"></div></div>
+		<div class="ps-overlay top"><div class="ps-arrow up" data-ps-arrow="moveUp"></div></div>
+		<div class="ps-overlay bottom"><div class="ps-arrow down" data-ps-arrow="moveDown"></div></div>		
+		<div id="ps-conveyor">
+			
+		</div>
+	</div>
+</template>
+
+<template name="page_yield">
+	{{> UI.dynamic template=template data=data}}
+</template>
