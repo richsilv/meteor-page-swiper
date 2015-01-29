@@ -8,6 +8,8 @@ Package.describe({
 Package.onUse(function(api) {
   api.versionsFrom('1.0.2.1');
   api.use(['templating@1.0.10', 'jquery@1.0.2', 'underscore@1.0.2'], 'client');
+  api.use(['fastclick@1.0.2'], 'client');
+  api.imply(['fastclick@1.0.2'], 'client');
   api.addFiles('snabbt/snabbt.js', 'client');
   api.addFiles('touchable.js/touchable.js', 'client');
   api.addFiles('page-swiper.html', 'client');
